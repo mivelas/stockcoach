@@ -1,8 +1,13 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import * as logger from '../utils/logger.js';
 
-const dbPath = path.join(process.cwd(), 'stockcoach.db');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Consistently locate stockcoach.db in the server directory, or override via DB_PATH
+const dbPath = process.env.DB_PATH || path.resolve(__dirname, '../../stockcoach.db');
 const db = new Database(dbPath);
 // Initialize database
 db.exec(`
@@ -88,6 +93,44 @@ export const isFavorite = (symbol: string): boolean => {
 export const saveRecommendationHistory = (symbol: string, recommendation: string, model: string = 'unknown') => {
   const stmt = db.prepare('INSERT INTO recommendation_history (symbol, recommendation, model) VALUES (?, ?, ?)');
   stmt.run(symbol, recommendation, model);
+};
+
+export const saveRecommendationHistoryWithDate = (
+  symbol: string,
+  recommendation: string,
+  model: string = 'unknown',
+  createdAt?: string
+) => {
+  if (createdAt) {
+    const stmt = db.prepare('INSERT INTO recommendation_history (symbol, recommendation, model, created_at) VALUES (?, ?, ?, ?)');
+    stmt.run(symbol, recommendation, model, createdAt);
+  } else {
+    saveRecommendationHistory(symbol, recommendation, model);
+  }
+};
+
+export const hasRecommendationForDate = (symbol: string, dateStr: string, model?: string): boolean => {
+  if (model) {
+    const stmt = db.prepare("SELECT 1 FROM recommendation_history WHERE symbol = ? AND model = ? AND date(created_at) = date(?)");
+    return !!stmt.get(symbol, model, dateStr);
+  } else {
+    const stmt = db.prepare("SELECT 1 FROM recommendation_history WHERE symbol = ? AND date(created_at) = date(?)");
+    return !!stmt.get(symbol, dateStr);
+  }
+};
+
+export const ensureRecommendationHistory = (
+  symbol: string,
+  recommendation: string,
+  model: string = 'unknown',
+  createdAt?: string
+): boolean => {
+  const dateStr = createdAt ? createdAt.substring(0, 10) : new Date().toISOString().substring(0, 10);
+  if (!hasRecommendationForDate(symbol, dateStr, model)) {
+    saveRecommendationHistoryWithDate(symbol, recommendation, model, createdAt);
+    return true;
+  }
+  return false;
 };
 
 export const getRecommendationHistory = (symbol: string) => {

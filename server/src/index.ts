@@ -11,6 +11,7 @@ import {
 } from './services/stockService.js';
 import { analyzeStock, getCachedAnalysis } from './services/aiService.js';
 import { fetchSP500List, getSP500Symbols, getCompanyName } from './services/sp500Service.js';
+import { runBulkAnalysis, getBulkAnalysisStatus } from './services/bulkAnalysisService.js';
 import * as dbService from './services/dbService.js';
 import * as logger from './utils/logger.js';
 
@@ -128,8 +129,9 @@ app.get('/api/stock/:symbol/history', (req, res) => {
 
 app.get('/api/stock/:symbol/analyze', async (req, res) => {
   const { symbol } = req.params;
-  const { model } = req.query;
-  logger.info('API call: analyzeStock', { symbol, model });
+  const { model, force } = req.query;
+  const forceRefresh = force === 'true';
+  logger.info('API call: analyzeStock', { symbol, model, forceRefresh });
   try {
     const data = await fetchStockQuote(symbol);
     const history = await fetchStockHistory(symbol);
@@ -138,7 +140,7 @@ app.get('/api/stock/:symbol/analyze', async (req, res) => {
     const name = getCompanyName(symbol);
     if (name) data.name = name;
     
-    const analysis = await analyzeStock(symbol, data, history, false, model as string);
+    const analysis = await analyzeStock(symbol, data, history, false, model as string, forceRefresh);
     res.json({ ...data, analysis });
   } catch (err: any) {
     logger.error('Error analyzing stock', { symbol, error: err.message });
@@ -166,8 +168,9 @@ app.get('/api/yahoo/stock/:symbol', async (req, res) => {
 
 app.get('/api/yahoo/stock/:symbol/analyze', async (req, res) => {
   const { symbol } = req.params;
-  const { model } = req.query;
-  logger.info('API call: analyzeStockYahoo', { symbol, model });
+  const { model, force } = req.query;
+  const forceRefresh = force === 'true';
+  logger.info('API call: analyzeStockYahoo', { symbol, model, forceRefresh });
   try {
     const data = await fetchStockQuoteYahoo(symbol);
     const history = await fetchStockHistoryYahoo(symbol);
@@ -175,7 +178,7 @@ app.get('/api/yahoo/stock/:symbol/analyze', async (req, res) => {
     const name = getCompanyName(symbol);
     if (name) data.name = name;
     
-    const analysis = await analyzeStock(symbol, data, history, false, model as string);
+    const analysis = await analyzeStock(symbol, data, history, false, model as string, forceRefresh);
     res.json({ ...data, analysis });
   } catch (err: any) {
     logger.error('Error analyzing stock from Yahoo', { symbol, error: err.message });
@@ -203,6 +206,9 @@ app.post('/api/yahoo/analyze-bulk', async (req, res) => {
         const cached = await getCachedAnalysis(symbol, modelName);
         if (cached) {
           results[symbol] = cached.recommendation;
+          if (cached.recommendation) {
+            dbService.ensureRecommendationHistory(symbol, cached.recommendation, modelName);
+          }
         }
       }));
     }
@@ -269,6 +275,27 @@ app.get('/api/report', async (req, res) => {
   }
 });
 
+app.get('/api/bulk-analysis/status', (req, res) => {
+  res.json(getBulkAnalysisStatus());
+});
+
+app.post('/api/bulk-analysis/start', (req, res) => {
+  const { model, force } = req.body || {};
+  const currentStatus = getBulkAnalysisStatus();
+  if (currentStatus.isRunning) {
+    return res.status(409).json({ message: 'Bulk analysis is already running', status: currentStatus });
+  }
+
+  runBulkAnalysis({
+    modelName: model,
+    forceRefresh: force === true,
+  }).catch(err => {
+    logger.error('Bulk analysis error', { error: err.message });
+  });
+
+  res.json({ message: 'Bulk analysis started', status: getBulkAnalysisStatus() });
+});
+
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
@@ -279,9 +306,20 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Load S&P 500 list on startup
+// Load S&P 500 list and trigger bulk analysis on startup
 fetchSP500List()
-  .then(() => logger.info('S&P 500 list loaded successfully'))
+  .then(() => {
+    logger.info('S&P 500 list loaded successfully');
+
+    if (process.env.RUN_BULK_ON_STARTUP !== 'false') {
+      logger.info('Triggering automated bulk analysis at startup in the background...');
+      runBulkAnalysis().catch(err => {
+        logger.error('Startup bulk analysis encountered an error', { error: err.message });
+      });
+    } else {
+      logger.info('Startup bulk analysis disabled via RUN_BULK_ON_STARTUP=false');
+    }
+  })
   .catch(err => logger.error('Failed to load S&P 500 list on startup', { error: err.message }));
 
 app.listen(Number(PORT), '0.0.0.0', () => {

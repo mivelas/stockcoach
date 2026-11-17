@@ -6,7 +6,9 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "migrate": "tsx scripts/migrateHistory.ts",
+    "bulk-analyze": "tsx scripts/bulkAnalyze.ts"
   },
   "keywords": [],
   "author": "",

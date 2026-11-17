@@ -2,11 +2,15 @@ import { GoogleGenAI } from '@google/genai';
 import * as logger from '../utils/logger.js';
 import { writeFile, mkdir, readFile, stat } from 'fs/promises';
 import path from 'path';
-import { saveRecommendationHistory } from './dbService.js';
+import { fileURLToPath } from 'url';
+import { saveRecommendationHistory, ensureRecommendationHistory } from './dbService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const analysisDir = process.env.ANALYSIS_DIR || path.resolve(__dirname, '../../analysis');
 
 const saveAnalysisToFile = async (symbol: string, text: string, modelName: string) => {
   try {
-    const analysisDir = path.join(process.cwd(), 'analysis');
     await mkdir(analysisDir, { recursive: true });
     
     // Include model name in filename for model-specific caching
@@ -19,7 +23,6 @@ const saveAnalysisToFile = async (symbol: string, text: string, modelName: strin
 };
 
 export const getCachedAnalysis = async (symbol: string, modelName: string) => {
-  const analysisDir = path.join(process.cwd(), 'analysis');
   const filePath = path.join(analysisDir, `${symbol}_${modelName}.md`);
 
   try {
@@ -45,9 +48,23 @@ export const getCachedAnalysis = async (symbol: string, modelName: string) => {
   return null;
 };
 
-export const analyzeStock = async (symbol: string, stockData: any, history: any, onlyCache: boolean = false, modelName: string = 'gemini-1.5-flash') => {
-  const cached = await getCachedAnalysis(symbol, modelName);
-  if (cached) return cached;
+export const analyzeStock = async (
+  symbol: string, 
+  stockData: any, 
+  history: any, 
+  onlyCache: boolean = false, 
+  modelName: string = 'gemini-1.5-flash',
+  forceRefresh: boolean = false
+) => {
+  if (!forceRefresh) {
+    const cached = await getCachedAnalysis(symbol, modelName);
+    if (cached) {
+      if (cached.recommendation) {
+        ensureRecommendationHistory(symbol, cached.recommendation, modelName);
+      }
+      return cached;
+    }
+  }
 
   if (onlyCache) {
     logger.info('Analysis not in cache, skipping (onlyCache=true)', { symbol, modelName });
