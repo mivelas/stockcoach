@@ -1,0 +1,22 @@
+<svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bullGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="100%" stop-color="#16a34a" />
+    </linearGradient>
+    <linearGradient id="bearGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#dc2626" />
+    </linearGradient>
+  </defs>
+  <path d="M24,4 L42,10 Q42,30 24,44 Q6,30 6,10 L24,4 Z" fill="#1e293b" stroke="#334155" stroke-width="1" />
+  
+  <!-- Simplified Bull -->
+  <path d="M12,15 Q18,12 22,20 L22,35 L12,35 Z" fill="url(#bullGrad)" />
+  
+  <!-- Simplified Bear -->
+  <path d="M36,15 Q30,12 26,20 L26,35 L36,35 Z" fill="url(#bearGrad)" />
+  
+  <!-- Center Accent -->
+  <path d="M20,25 L24,20 L28,25" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
